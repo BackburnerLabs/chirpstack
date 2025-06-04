@@ -433,7 +433,7 @@ async fn handle_uplink_stream(
         }
         "down" => {
             // Due to switching this stream to only handle uplink frames, we can longer pass along DownlinkFrameLog
-            // messages. This is a no-op now, but we keep the trace for debugging purposes.
+            // messages. This is a no-op now, but I left the trace for debugging purposes.
             trace!(key = %k, id = %stream_id, "downlink frame-log received from stream");
         }
         _ => {
