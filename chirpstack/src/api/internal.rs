@@ -14,7 +14,7 @@ use tonic::{Request, Response, Status};
 use tracing::{debug, error, trace};
 use uuid::Uuid;
 
-use chirpstack_api::api;
+use chirpstack_api::{api, stream as api_stream};
 use chirpstack_api::api::internal_service_server::InternalService;
 
 use super::auth::claims;
@@ -769,6 +769,74 @@ impl InternalService for Internal {
         let (stream_tx, stream_rx) = mpsc::channel(1);
 
         let mut framelog_future = Box::pin(stream::frame::get_frame_logs(key, 10, redis_tx));
+        let (drop_receiver, mut close_rx) = DropReceiver::new(ReceiverStream::new(stream_rx));
+
+        tokio::spawn(async move {
+            loop {
+                tokio::select! {
+                    // detect client disconnect
+                    _ = close_rx.recv() => {
+                        debug!("Client disconnected");
+                        redis_rx.close();
+                        break;
+                    }
+                    // detect get_frame_logs function return
+                    res = &mut framelog_future => {
+                        match res {
+                            Ok(_) => {
+                                trace!("get_frame_logs returned");
+                            },
+                            Err(e) => {
+                                error!("Reading frame-log returned error: {}", e);
+                                stream_tx.send(Err(e.status())).await.unwrap();
+                            },
+                        }
+                        break;
+                    }
+                    // detect stream message
+                    msg = redis_rx.recv() => {
+                        match msg {
+                            None => {
+                                trace!("Redis Stream channel has been closed");
+                                break;
+                            },
+                            Some(msg) => {
+                                trace!("Message received from Redis Stream channel");
+                                if stream_tx.send(Ok(msg)).await.is_err() {
+                                    error!("Sending message to gRPC channel error");
+                                    break;
+                                };
+                            },
+                        }
+                    }
+                }
+            }
+        });
+
+        Ok(Response::new(drop_receiver))
+    }
+
+    type StreamDeviceUplinkFramesStream = DropReceiver<Result<api_stream::UplinkFrameLog, Status>>;
+
+    async fn stream_device_uplink_frames(
+        &self,
+        request: Request<api::StreamDeviceFramesRequest>,
+    ) -> Result<Response<Self::StreamDeviceUplinkFramesStream>, Status> {
+        let req = request.get_ref();
+        let dev_eui = EUI64::from_str(&req.dev_eui).map_err(|e| e.status())?;
+
+        self.validator
+            .validate(
+                request.extensions(),
+                validator::ValidateDeviceAccess::new(validator::Flag::Read, dev_eui),
+            )
+            .await?;
+
+        let key = redis_key(format!("device:{{{}}}:stream:frame", req.dev_eui));
+        let (redis_tx, mut redis_rx) = mpsc::channel(1);
+        let (stream_tx, stream_rx) = mpsc::channel(1);
+
+        let mut framelog_future = Box::pin(stream::frame::get_uplink_frame_logs(key, 10, redis_tx));
         let (drop_receiver, mut close_rx) = DropReceiver::new(ReceiverStream::new(stream_rx));
 
         tokio::spawn(async move {

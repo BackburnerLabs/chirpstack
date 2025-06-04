@@ -366,3 +366,80 @@ async fn handle_stream(
 
     Ok(())
 }
+
+pub async fn get_uplink_frame_logs(
+    key: String,
+    count: usize,
+    channel: mpsc::Sender<stream::UplinkFrameLog>,
+) -> Result<()> {
+    let mut last_id = "0".to_string();
+
+    loop {
+        if channel.is_closed() {
+            debug!("Channel has been closed, returning");
+            return Ok(());
+        }
+
+        let srr: StreamReadReply = redis::cmd("XREAD")
+            .arg("COUNT")
+            .arg(count)
+            .arg("STREAMS")
+            .arg(&key)
+            .arg(&last_id)
+            .query_async(&mut get_async_redis_conn().await?)
+            .await
+            .context("XREAD frame stream")?;
+
+        for stream_key in &srr.keys {
+            for stream_id in &stream_key.ids {
+                last_id.clone_from(&stream_id.id);
+                for (k, v) in &stream_id.map {
+                    let res = handle_uplink_stream(&last_id, &channel, k, v).await;
+
+                    if let Err(e) = res {
+                        // Return in case of channel error, in any other case we just log
+                        // the error.
+                        if e.downcast_ref::<mpsc::error::SendError<stream::UplinkFrameLog>>()
+                            .is_some()
+                        {
+                            return Err(e);
+                        }
+
+                        error!(key = %k, error = %e.full(), "Parsing frame-log error");
+                    }
+                }
+            }
+        }
+
+        // If we use xread with block=0, the connection can't be used by other requests. Now we
+        // check every 1 second if there are new messages, which should be sufficient.
+        sleep(Duration::from_secs(1)).await;
+    }
+}
+
+async fn handle_uplink_stream(
+    stream_id: &str,
+    channel: &mpsc::Sender<stream::UplinkFrameLog>,
+    k: &str,
+    v: &redis::Value,
+) -> Result<()> {
+    match k {
+        "up" => {
+            trace!(key = %k, id = %stream_id, "Frame-log received from stream");
+            if let redis::Value::BulkString(b) = v {
+                let pl = stream::UplinkFrameLog::decode(&mut Cursor::new(b))?;
+                channel.send(pl).await?;
+            }
+        }
+        "down" => {
+            // Due to switching this stream to only handle uplink frames, we can longer pass along DownlinkFrameLog
+            // messages. This is a no-op now, but we keep the trace for debugging purposes.
+            trace!(key = %k, id = %stream_id, "downlink frame-log received from stream");
+        }
+        _ => {
+            error!(key = %k, "Unexpected key in frame-log stream");
+        }
+    }
+
+    Ok(())
+}
