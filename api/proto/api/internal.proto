@@ -62,7 +62,7 @@ service InternalService {
   rpc StreamDeviceFrames(StreamDeviceFramesRequest) returns (stream LogItem) {}
 
   // Stream frames for the given Device EUI.
-  rpc CustomStreamDeviceFrames(StreamDeviceFramesRequest) returns (stream stream.UplinkFrameLog) {}
+  rpc StreamDeviceUplinkFrames(StreamDeviceFramesRequest) returns (stream stream.UplinkFrameLog) {}
 
   // Stream events for the given Device EUI.
   rpc StreamDeviceEvents(StreamDeviceEventsRequest) returns (stream LogItem) {}

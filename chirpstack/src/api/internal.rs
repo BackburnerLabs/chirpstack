@@ -14,8 +14,8 @@ use tonic::{Request, Response, Status};
 use tracing::{debug, error, trace};
 use uuid::Uuid;
 
-use chirpstack_api::{api, stream as api_stream};
 use chirpstack_api::api::internal_service_server::InternalService;
+use chirpstack_api::{api, stream as api_stream};
 
 use super::auth::claims;
 use super::auth::{validator, AuthID};

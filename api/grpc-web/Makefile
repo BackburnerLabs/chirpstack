@@ -1,10 +1,9 @@
-.PHONY: common api google-api
-
+.PHONY: common api google-api stream
 
 PROTOC_PATH := ./node_modules/grpc-tools/bin/protoc
 PROTOC_ARGS := -I=../proto --js_out=import_style=commonjs:. --grpc-web_out=import_style=commonjs+dts,mode=grpcwebtext:.
 
-all: requirements common gw api integration google-api
+all: requirements common gw api integration google-api stream
 
 requirements:
 	yarn install
@@ -16,6 +15,10 @@ common:
 gw:
 	mkdir -p gw
 	$(PROTOC_PATH) $(PROTOC_ARGS) ../proto/gw/gw.proto
+
+stream:
+	mkdir -p stream
+	$(PROTOC_PATH) $(PROTOC_ARGS) ../proto/stream/frame.proto
 
 api:
 	mkdir -p api
