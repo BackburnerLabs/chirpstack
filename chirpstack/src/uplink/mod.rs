@@ -185,11 +185,14 @@ async fn _deduplicate_uplink(
         region_config_id, tx_info_str, phy_str
     ));
 
+    // Changed dedup delay to 2ms (down from 200ms default). Removed if statement 
+    // that enforced minimum of 200ms. Even with a single gateway, the same uplink 
+    // can be received on multiple channels with different signal quality when the 
+    // device is close (~5m). A 2ms delay gives us time to collect these multi-channel 
+    // receptions and select the best quality frame, rather than processing the first 
+    // (potentially lower quality) frame that arrives.
     let dedup_delay = config::get().network.deduplication_delay;
-    let mut dedup_ttl = dedup_delay * 2;
-    if dedup_ttl < Duration::from_millis(200) {
-        dedup_ttl = Duration::from_millis(200);
-    }
+    let dedup_ttl = dedup_delay * 2;
 
     trace!(
         key = key.as_str(),

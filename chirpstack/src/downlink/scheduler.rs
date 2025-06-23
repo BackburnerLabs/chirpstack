@@ -20,6 +20,7 @@ pub async fn class_b_c_scheduler_loop() {
             trace!("class_b_c_scheduler_loop completed successfully");
         }
 
+        // This config setting got changed from 1 second to a lower number (10ms at time of comment)
         sleep(conf.network.scheduler.interval).await;
     }
 }

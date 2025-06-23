@@ -176,7 +176,7 @@ impl Default for Network {
             dev_addr_prefixes: vec![],
             enabled_regions: vec![],
             device_session_ttl: Duration::from_secs(60 * 60 * 24 * 31),
-            deduplication_delay: Duration::from_millis(200),
+            deduplication_delay: Duration::from_millis(2),
             get_downlink_data_delay: Duration::from_millis(100),
             mac_commands_disabled: false,
             adr_plugins: vec![],
@@ -204,8 +204,8 @@ pub struct Scheduler {
 impl Default for Scheduler {
     fn default() -> Self {
         Scheduler {
-            interval: Duration::from_secs(1),
-            batch_size: 100,
+            interval: Duration::from_millis(10),
+            batch_size: 10, // Smaller batch size to avoid long-running tasks and to allow for more frequent scheduling
             class_a_lock_duration: Duration::from_secs(5),
             class_c_lock_duration: Duration::from_secs(5),
             multicast_class_c_margin: Duration::from_secs(5),

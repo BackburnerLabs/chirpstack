@@ -373,6 +373,7 @@ pub async fn get_uplink_frame_logs(
     channel: mpsc::Sender<stream::UplinkFrameLog>,
 ) -> Result<()> {
     let mut last_id = "0".to_string();
+    let mut conn = get_async_redis_conn().await?;
 
     loop {
         if channel.is_closed() {
@@ -380,40 +381,55 @@ pub async fn get_uplink_frame_logs(
             return Ok(());
         }
 
-        let srr: StreamReadReply = redis::cmd("XREAD")
+        match redis::cmd("XREAD")
             .arg("COUNT")
             .arg(count)
             .arg("STREAMS")
             .arg(&key)
             .arg(&last_id)
-            .query_async(&mut get_async_redis_conn().await?)
+            .query_async::<StreamReadReply>(&mut conn)
             .await
-            .context("XREAD frame stream")?;
-
-        for stream_key in &srr.keys {
-            for stream_id in &stream_key.ids {
-                last_id.clone_from(&stream_id.id);
-                for (k, v) in &stream_id.map {
-                    let res = handle_uplink_stream(&last_id, &channel, k, v).await;
-
-                    if let Err(e) = res {
-                        // Return in case of channel error, in any other case we just log
-                        // the error.
-                        if e.downcast_ref::<mpsc::error::SendError<stream::UplinkFrameLog>>()
-                            .is_some()
-                        {
-                            return Err(e);
+            .context("XREAD frame stream") {
+                Ok(srr) => {
+                    for stream_key in &srr.keys {
+                        for stream_id in &stream_key.ids {
+                            last_id.clone_from(&stream_id.id);
+                            for (k, v) in &stream_id.map {
+                                let res = handle_uplink_stream(&last_id, &channel, k, v).await;
+            
+                                if let Err(e) = res {
+                                    // Return in case of channel error, in any other case we just log
+                                    // the error.
+                                    if e.downcast_ref::<mpsc::error::SendError<stream::UplinkFrameLog>>()
+                                        .is_some()
+                                    {
+                                        return Err(e);
+                                    }
+            
+                                    error!(key = %k, error = %e.full(), "Parsing frame-log error");
+                                }
+                            }
                         }
-
-                        error!(key = %k, error = %e.full(), "Parsing frame-log error");
                     }
                 }
-            }
-        }
+                Err(e) => {
+                    warn!("Redis error, reconnecting: {}", e);
+                    conn = get_async_redis_conn().await?;
+                    continue;
+                }
+            };
+
+
 
         // If we use xread with block=0, the connection can't be used by other requests. Now we
         // check every 1 second if there are new messages, which should be sufficient.
-        sleep(Duration::from_secs(1)).await;
+
+        // Left previous comment above for reference:
+        // Changed poll to 5ms for faster response/poll times.
+        // Updated redis connection to not get a new connection every loop but rather reuse its connection.
+        // With a 5ms poll time reconnection to redis every loop would be too slow.
+        // Now we only get a new connection if the previous one fails.
+        sleep(Duration::from_millis(5)).await;
     }
 }
 

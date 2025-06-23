@@ -2416,8 +2416,11 @@ impl Data {
     async fn class_c_update_scheduler_run_after(&mut self) -> Result<()> {
         trace!("Updating scheduler_run_after_ts for Class-C");
 
-        let conf = config::get();
-        let scheduler_run_after_ts = Utc::now() + conf.network.scheduler.class_c_lock_duration;
+        // let conf = config::get();
+        // let scheduler_run_after_ts = Utc::now() + conf.network.scheduler.class_c_lock_duration;
+        // Removed the class-c lock to allow us to send multiple messages to the same device in rapid succession.
+        // Left the previous impl above commented out in case this causes issues.
+        let scheduler_run_after_ts = Utc::now();
 
         self.device = device::partial_update(
             self.device.dev_eui,

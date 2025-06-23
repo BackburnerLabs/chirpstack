@@ -3,7 +3,7 @@ use std::fmt;
 use std::str::FromStr;
 
 use anyhow::{Context, Result};
-use chrono::{DateTime, Duration, Utc};
+use chrono::{DateTime, Utc};
 use diesel::{backend::Backend, deserialize, dsl, prelude::*, serialize, sql_types::Text};
 use diesel_async::RunQueryDsl;
 use tracing::info;
@@ -15,7 +15,6 @@ use lrwn::{DevAddr, EUI64};
 use super::schema::{application, device, device_profile, multicast_group_device, tenant};
 use super::{db_transaction, error::Error, fields, get_async_db_conn};
 use crate::api::helpers::FromProto;
-use crate::config;
 
 pub enum ValidationStatus {
     Ok(u32, Device),
@@ -816,8 +815,6 @@ pub async fn get_with_class_b_c_queue_items(limit: usize) -> Result<Vec<Device>>
     let mut c = get_async_db_conn().await?;
     db_transaction::<Vec<Device>, Error, _>(&mut c, |c| {
         Box::pin(async {
-            let conf = config::get();
-
             // This query will:
             //  * Select the devices for which a Class-B or Class-C downlink can be scheduled.
             //  * Lock the device records for update with skip locked such that other
@@ -833,12 +830,18 @@ pub async fn get_with_class_b_c_queue_items(limit: usize) -> Result<Vec<Device>>
             // this might cause issues.
             // The alternative would be to keep the transaction open for a long time + keep
             // the device records locked during this time which could case issues as well.
+
+            // Left previous comment above for reference:
+            // Modified query: Remove scheduler_run_after update for low-latency operation
+            // This allows immediate re-scheduling of devices for time-sensitive messages
+            // Remove scheduler_run_after filter but keep the UPDATE to avoid null issues
+            // Set to now() for immediate re-availability while maintaining DB consistency
             diesel::sql_query(if cfg!(feature = "sqlite") {
                 r#"
                     update
                         device
                     set
-                        scheduler_run_after = ?3
+                        scheduler_run_after = ?2
                     where
                         dev_eui in (
                             select
@@ -847,7 +850,6 @@ pub async fn get_with_class_b_c_queue_items(limit: usize) -> Result<Vec<Device>>
                                 device d
                             where
                                 d.enabled_class in ('B', 'C')
-                                and (d.scheduler_run_after is null or d.scheduler_run_after < ?2)
                                 and d.is_disabled = FALSE
                                 and exists (
                                     select
@@ -871,7 +873,7 @@ pub async fn get_with_class_b_c_queue_items(limit: usize) -> Result<Vec<Device>>
                     update
                         device
                     set
-                        scheduler_run_after = $3
+                        scheduler_run_after = $2
                     where
                         dev_eui in (
                             select 
@@ -880,7 +882,6 @@ pub async fn get_with_class_b_c_queue_items(limit: usize) -> Result<Vec<Device>>
                                 device d
                             where
                                 d.enabled_class in ('B', 'C')
-                                and (d.scheduler_run_after is null or d.scheduler_run_after < $2)
                                 and d.is_disabled = false
                                 and exists (
                                     select
@@ -903,9 +904,6 @@ pub async fn get_with_class_b_c_queue_items(limit: usize) -> Result<Vec<Device>>
             })
             .bind::<diesel::sql_types::Integer, _>(limit as i32)
             .bind::<fields::sql_types::Timestamptz, _>(Utc::now())
-            .bind::<fields::sql_types::Timestamptz, _>(
-                Utc::now() + Duration::from_std(2 * conf.network.scheduler.interval).unwrap(),
-            )
             .load(c)
             .await
             .map_err(|e| Error::from_diesel(e, "".into()))
@@ -1284,14 +1282,14 @@ pub mod test {
         .await
         .unwrap();
         qi.is_pending = true;
-        qi.timeout_after = Some(Utc::now() + Duration::try_seconds(10).unwrap());
+        qi.timeout_after = Some(Utc::now() + chrono::Duration::try_seconds(10).unwrap());
         qi = device_queue::update_item(qi).await.unwrap();
         let res = get_with_class_b_c_queue_items(10).await.unwrap();
         assert_eq!(0, res.len());
 
         // device in class C / downlink is pending but has expired.
         qi.is_pending = true;
-        qi.timeout_after = Some(Utc::now() - Duration::try_seconds(10).unwrap());
+        qi.timeout_after = Some(Utc::now() - chrono::Duration::try_seconds(10).unwrap());
         let _ = device_queue::update_item(qi).await.unwrap();
         let res = get_with_class_b_c_queue_items(10).await.unwrap();
         assert_eq!(1, res.len());
