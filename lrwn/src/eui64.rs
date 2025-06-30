@@ -4,6 +4,7 @@ use std::str::FromStr;
 use anyhow::{Context, Result};
 #[cfg(feature = "sqlite")]
 use diesel::sqlite::Sqlite;
+#[allow(unused_imports)]
 #[cfg(feature = "diesel")]
 use diesel::{backend::Backend, deserialize, serialize, sql_types::Binary};
 #[cfg(feature = "serde")]

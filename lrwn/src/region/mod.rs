@@ -6,6 +6,7 @@ use std::time::Duration;
 use anyhow::{Context, Result};
 #[cfg(feature = "sqlite")]
 use diesel::sqlite::Sqlite;
+#[allow(unused_imports)]
 #[cfg(feature = "diesel")]
 use diesel::{
     backend::Backend,
