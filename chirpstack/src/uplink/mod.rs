@@ -176,50 +176,16 @@ async fn _deduplicate_uplink(
         None => "".to_string(),
     };
 
-    let key = redis_key(format!(
-        "up:collect:{{{}:{}:{}}}",
-        region_config_id, tx_info_str, phy_str
-    ));
-    let lock_key = redis_key(format!(
-        "up:collect:{{{}:{}:{}}}:lock",
-        region_config_id, tx_info_str, phy_str
-    ));
-
-    // Changed dedup delay to 2ms (down from 200ms default). Removed if statement 
-    // that enforced minimum of 200ms. Even with a single gateway, the same uplink 
-    // can be received on multiple channels with different signal quality when the 
-    // device is close (~5m). A 2ms delay gives us time to collect these multi-channel 
-    // receptions and select the best quality frame, rather than processing the first 
-    // (potentially lower quality) frame that arrives.
-    let dedup_delay = config::get().network.deduplication_delay;
-    let dedup_ttl = dedup_delay * 2;
-
-    trace!(
-        key = key.as_str(),
-        "Adding uplink event to deduplication set and getting lock"
-    );
-    let locked = deduplicate_put(&key, &lock_key, dedup_ttl, &event).await?;
-    if locked {
-        trace!(
-            lock_key = lock_key.as_str(),
-            "Deduplication is already locked by an other process"
-        );
-
-        DEDUPLICATE_LOCKED_COUNTER.inc();
-
-        return Ok(());
-    }
-
-    DEDUPLICATE_NO_LOCK_COUNTER.inc();
-
-    trace!(
-        key = key.as_str(),
-        "Waiting for more uplink events to receive"
-    );
-    sleep(dedup_delay).await;
-
-    trace!(key = key.as_str(), "Collecting received uplink events");
-    let uplink = deduplicate_collect(&key).await?;
+    // Reformat UplinkFrame into a UplinkFrameSet before forwarding it to the uplink handler.
+    // This was previously done in the debup logic that we cut out to reduce latency.
+    let uplink = gw::UplinkFrameSet {
+        phy_payload: event.phy_payload,
+        tx_info: event.tx_info,
+        rx_info: match event.rx_info{
+            Some(rx_info) => vec!(rx_info),
+            None => Vec::new(),
+        }
+    };
 
     let deduplication_id = Uuid::new_v4();
     let span = span!(Level::INFO, "up", deduplication_id = %deduplication_id);

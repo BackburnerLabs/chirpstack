@@ -968,9 +968,15 @@ impl Data {
             // * as is_pending was already set to true, a negative ack event is sent
             //   and item is popped from the queue
 
+            // Leaving previous comment above for reference.
+            // Switched to setting is_pending to true here for more responsive polling to prevent sending
+            // the same item multiple times with a faster poll time. Since we are only using Class-C devices
+            // I believe this is safe.
+
             // Do not update the frame-counter in case the queue-item is encrypted.
             if !qi.is_encrypted {
                 qi.f_cnt_down = Some(ds.get_a_f_cnt_down() as i64);
+                qi.is_pending = true;
                 *qi = device_queue::update_item(qi.clone()).await?;
             }
         }

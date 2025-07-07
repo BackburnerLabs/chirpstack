@@ -204,8 +204,8 @@ pub struct Scheduler {
 impl Default for Scheduler {
     fn default() -> Self {
         Scheduler {
-            interval: Duration::from_millis(10),
-            batch_size: 10, // Smaller batch size to avoid long-running tasks and to allow for more frequent scheduling
+            interval: Duration::from_millis(5),
+            batch_size: 100,
             class_a_lock_duration: Duration::from_secs(5),
             class_c_lock_duration: Duration::from_secs(5),
             multicast_class_c_margin: Duration::from_secs(5),
