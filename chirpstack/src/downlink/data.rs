@@ -1046,7 +1046,9 @@ impl Data {
     async fn send_downlink_frame(&self) -> Result<()> {
         trace!("Sending downlink frame");
         // log payload and metadata
-        info!("sending downlink frame!!: {:#?}", self.device_queue_item);
+        info!("sending queue item!!: {:#?}", self.device_queue_item);
+        info!("sending downlink frame!!: {:#?}", self.downlink_frame);
+
         let ds = self.device.get_device_session()?;
 
         gateway::backend::send_downlink(&ds.region_config_id, &self.downlink_frame)
