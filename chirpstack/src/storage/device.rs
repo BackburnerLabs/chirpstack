@@ -904,9 +904,7 @@ pub async fn get_with_class_b_c_queue_items(limit: usize) -> Result<Vec<Device>>
             })
             .bind::<diesel::sql_types::Integer, _>(limit as i32)
             .bind::<fields::sql_types::Timestamptz, _>(Utc::now())
-            .bind::<fields::sql_types::Timestamptz, _>(
-                Utc::now() + Duration::from_std(2 * conf.network.scheduler.interval).unwrap(),
-            )
+            .bind::<fields::sql_types::Timestamptz, _>(Utc::now())
             .load(c)
             .await
             .map_err(|e| Error::from_diesel(e, "".into()))
