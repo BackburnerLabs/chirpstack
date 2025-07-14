@@ -905,7 +905,7 @@ pub async fn get_with_class_b_c_queue_items(limit: usize) -> Result<Vec<Device>>
             .bind::<diesel::sql_types::Integer, _>(limit as i32)
             .bind::<fields::sql_types::Timestamptz, _>(Utc::now())
             .bind::<fields::sql_types::Timestamptz, _>(
-                Utc::now() + chrono::Duration::milliseconds(100)
+                Utc::now()
             )
             .load(c)
             .await
