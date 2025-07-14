@@ -1,6 +1,6 @@
 use anyhow::Result;
 use tokio::time::sleep;
-use tracing::{error, trace};
+use tracing::{error, trace, info};
 
 use super::data;
 use super::multicast as mcast;
@@ -50,6 +50,12 @@ pub async fn schedule_device_queue_batch(size: usize) -> Result<()> {
         device_count = devices.len(),
         "Got this number of devices with schedulable queue-items"
     );
+    if devices.len() != 0 {
+        info!(
+            device_count = devices.len(),
+            "Got this number of devices with schedulable queue-items"
+        );  
+    }
 
     let mut handles = vec![];
 

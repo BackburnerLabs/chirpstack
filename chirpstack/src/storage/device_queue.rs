@@ -65,6 +65,7 @@ impl Default for DeviceQueueItem {
 
 pub async fn enqueue_item(qi: DeviceQueueItem) -> Result<DeviceQueueItem, Error> {
     qi.validate()?;
+    info!("enqueuing device queue-item {:?}", qi);
 
     let qi: DeviceQueueItem = diesel::insert_into(device_queue_item::table)
         .values(&qi)

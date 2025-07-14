@@ -6,7 +6,7 @@ use std::time::Duration;
 use anyhow::{Context, Result};
 use chrono::{DateTime, Utc};
 use rand::Rng;
-use tracing::{debug, span, trace, warn, Instrument, Level};
+use tracing::{debug, span, trace, warn, info, Instrument, Level};
 
 use crate::api::backend::get_async_receiver;
 use crate::api::helpers::{FromProto, ToProto};
@@ -298,7 +298,7 @@ impl Data {
     }
 
     async fn _handle_schedule_next_queue_item(downlink_id: u32, dev: device::Device) -> Result<()> {
-        trace!("Handle schedule next-queue item flow");
+        info!("Handle schedule next-queue item flow");
 
         let (dev, app, ten, dp) = get_all_device_data(dev.dev_eui).await?;
         let dev_gw = device_gateway::get_rx_info(&dev.dev_eui).await?;
@@ -348,8 +348,11 @@ impl Data {
         if ctx._is_class_a() {
             return Err(anyhow!("Invalid device-class"));
         }
+        info!("get queue item for device");
         ctx.get_next_device_queue_item().await?;
+        info!("after device queue item");
         if ctx._something_to_send() {
+            info!("set mac-commands");
             ctx.set_phy_payloads()?;
             ctx.update_device_queue_item().await?;
             ctx.save_downlink_frame().await?;
@@ -440,7 +443,6 @@ impl Data {
         if self.downlink_frame_items.is_empty() {
             return Err(anyhow!("downlink_frame_items is empty"));
         }
-
         // We use the first downlink opportunity to determine the max-payload size
         // for the downlink.
         let max_payload_size = self.downlink_frame_items[0].remaining_payload_size;
@@ -460,6 +462,7 @@ impl Data {
                         }
                     },
                 };
+            info!("found device queue-item: {:#?}", qi);
 
             // The queue item:
             // * should fit within the max payload size
@@ -706,6 +709,7 @@ impl Data {
 
     fn set_phy_payloads(&mut self) -> Result<()> {
         trace!("Setting downlink PHYPayloads");
+        info!(downlink_id = self.downlink_frame.downlink_id, "Setting downlink PHYPayloads");
         let mut f_pending = self.more_device_queue_items;
         let dev_addr = self.device.get_dev_addr()?;
         let ds = self.device.get_device_session_mut()?;
@@ -1041,6 +1045,8 @@ impl Data {
 
     async fn send_downlink_frame(&self) -> Result<()> {
         trace!("Sending downlink frame");
+        // log payload and metadata
+        info!("sending downlink frame!!: {:#?}", self.device_queue_item);
         let ds = self.device.get_device_session()?;
 
         gateway::backend::send_downlink(&ds.region_config_id, &self.downlink_frame)
