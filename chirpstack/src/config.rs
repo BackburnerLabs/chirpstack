@@ -204,7 +204,7 @@ pub struct Scheduler {
 impl Default for Scheduler {
     fn default() -> Self {
         Scheduler {
-            interval: Duration::from_millis(1000),
+            interval: Duration::from_millis(100),
             batch_size: 100,
             class_a_lock_duration: Duration::from_secs(5),
             class_c_lock_duration: Duration::from_secs(5),
