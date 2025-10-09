@@ -832,11 +832,9 @@ impl InternalService for Internal {
             )
             .await?;
 
-        let key = redis_key(format!("device:{{{}}}:stream:frame", req.dev_eui));
         let (redis_tx, mut redis_rx) = mpsc::channel(1);
         let (stream_tx, stream_rx) = mpsc::channel(1);
 
-        let mut framelog_future = Box::pin(stream::frame::get_uplink_frame_logs(key, 10, redis_tx));
         let (drop_receiver, mut close_rx) = DropReceiver::new(ReceiverStream::new(stream_rx));
 
         tokio::spawn(async move {
@@ -846,19 +844,6 @@ impl InternalService for Internal {
                     _ = close_rx.recv() => {
                         debug!("Client disconnected");
                         redis_rx.close();
-                        break;
-                    }
-                    // detect get_frame_logs function return
-                    res = &mut framelog_future => {
-                        match res {
-                            Ok(_) => {
-                                trace!("get_frame_logs returned");
-                            },
-                            Err(e) => {
-                                error!("Reading frame-log returned error: {}", e);
-                                stream_tx.send(Err(e.status())).await.unwrap();
-                            },
-                        }
                         break;
                     }
                     // detect stream message
