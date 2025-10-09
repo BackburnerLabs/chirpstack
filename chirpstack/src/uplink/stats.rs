@@ -4,13 +4,13 @@ use std::hash::{Hash, Hasher};
 use std::str::FromStr;
 use std::time::Duration;
 
-use anyhow::{Context, Result};
+use anyhow::{anyhow, Context, Result};
 use chrono::{DateTime, Local, Utc};
 use tracing::{error, info, span, trace, warn, Instrument, Level};
 
 use crate::gateway::backend as gateway_backend;
 use crate::helpers::errors::PrintFullError;
-use crate::storage::{error::Error, fields, gateway, metrics};
+use crate::storage::{error::Error, fields, gateway, metrics, tenant};
 use crate::{config, region};
 use chirpstack_api::{common, gw};
 use lrwn::EUI64;
@@ -70,6 +70,68 @@ impl Stats {
         Ok(())
     }
 
+    async fn get_single_tenant_id() -> Result<fields::Uuid> {
+        let tenants = tenant::list(2, 0, &tenant::Filters::default()).await
+            .context("Failed to query tenants")?;
+
+        match tenants.len() {
+            0 => Err(anyhow!("No tenants found in database - cannot auto-create gateway")),
+            1 => Ok(tenants[0].id),
+            _ => {
+                // If there are multiple tenants, we use the first one in the list
+                // however there should only ever be one tenant 
+                warn!("Multiple tenants found, using first tenant for gateway auto-creation");
+                Ok(tenants[0].id)
+            }
+        }
+    }
+
+    async fn create_new_gateway(&mut self) -> Result<()> {
+        trace!("Creating new gateway for unknown gateway");
+
+        let tenant_id = Self::get_single_tenant_id().await?;
+
+        let mut latitude = 0.0;
+        let mut longitude = 0.0; 
+        let mut altitude = 0.0;
+
+        if let Some(loc) = &self.stats.location {
+            if !(loc.latitude == 0.0 && loc.longitude == 0.0 && loc.altitude == 0.0) {
+                latitude = loc.latitude;
+                longitude = loc.longitude;
+                altitude = loc.altitude as f32;
+            }
+        }
+
+        let new_gateway = gateway::Gateway {
+            gateway_id: self.gateway_id,
+            tenant_id,
+            name: format!("Gateway-{}", self.gateway_id),
+            description: "Auto-created from gateway stats".to_string(),
+            latitude,
+            longitude,
+            altitude,
+            properties: fields::KeyValue::new(self.stats.metadata.clone()),
+            stats_interval_secs: 30, // Default stats interval
+            last_seen_at: Some(Utc::now()),
+            ..Default::default()
+        };
+
+        self.gateway = Some(
+            gateway::create(new_gateway)
+                .await
+                .context("Create new gateway")?,
+        );
+
+        info!(
+            gateway_id = %self.gateway_id, 
+            tenant_id = %tenant_id,
+            "Auto-created gateway for unknown device"
+        );
+
+        Ok(())
+    }
+
     async fn update_gateway_state(&mut self) -> Result<()> {
         trace!("Update gateway state");
 
@@ -88,11 +150,17 @@ impl Stats {
             }
         }
 
-        self.gateway = Some(
-            gateway::partial_update(self.gateway_id, &gw_cs)
-                .await
-                .context("Update gateway state")?,
-        );
+        match gateway::partial_update(self.gateway_id, &gw_cs).await {
+            Ok(gateway) => {
+                self.gateway = Some(gateway);
+            }
+            Err(e) => {
+                // Check if this is a NotFound error
+                if matches!(e, Error::NotFound(_)) {
+                    self.create_new_gateway().await?;
+                }
+            }
+        }
 
         Ok(())
     }
