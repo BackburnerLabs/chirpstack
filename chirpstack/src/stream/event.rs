@@ -105,6 +105,54 @@ pub async fn get_event_logs(
     }
 }
 
+pub async fn get_uplink_event_logs(
+    key: String,
+    count: usize,
+    channel: mpsc::Sender<chirpstack_api::integration::UplinkEvent>,
+) -> Result<()> {
+    let mut last_id = "0".to_string();
+
+    loop {
+        if channel.is_closed() {
+            debug!("Channel has been closed, returning");
+            return Ok(());
+        }
+
+        let srr: StreamReadReply = redis::cmd("XREAD")
+            .arg("COUNT")
+            .arg(count)
+            .arg("STREAMS")
+            .arg(&key)
+            .arg(&last_id)
+            .query_async(&mut get_async_redis_conn().await?)
+            .await
+            .context("XREAD event stream")?;
+
+        for stream_key in &srr.keys {
+            for stream_id in &stream_key.ids {
+                last_id.clone_from(&stream_id.id);
+                if let Some(value) = stream_id.map.get("up") {
+                    if let redis::Value::BulkString(b) = value {
+                        let pl = match integration::UplinkEvent::decode(&mut Cursor::new(b)) {
+                            Ok(pl) => pl,
+                            Err(e) => {
+                                error!(error = %e, "Parsing Uplink log error");
+                                continue;
+                            }
+                        };
+
+                        channel.send(pl).await?;
+                    }
+                }
+            }
+        }
+
+        // If we use xread with block=0, the connection can't be used by other requests. Now we
+        // check every 1 second if there are new messages, which should be sufficient.
+        sleep(Duration::from_millis(10)).await;
+    }
+}
+
 async fn handle_stream(
     stream_id: &str,
     channel: &mpsc::Sender<api::LogItem>,

@@ -15,6 +15,7 @@ import "google/protobuf/empty.proto";
 import "common/common.proto";
 import "api/user.proto";
 import "stream/frame.proto";
+import "integration/integration.proto";
 
 // InternalService is the service providing API endpoints for internal usage.
 service InternalService {
@@ -63,6 +64,9 @@ service InternalService {
 
   // Stream frames for the given Device EUI.
   rpc StreamDeviceUplinkFrames(StreamDeviceFramesRequest) returns (stream stream.UplinkFrameLog) {}
+
+  // Stream uplink events for the given Device EUI.
+  rpc StreamDeviceUplinkEvents(StreamDeviceEventsRequest) returns (stream integration.UplinkEvent) {}
 
   // Stream events for the given Device EUI.
   rpc StreamDeviceEvents(StreamDeviceEventsRequest) returns (stream LogItem) {}
