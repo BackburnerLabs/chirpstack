@@ -884,7 +884,14 @@ impl InternalService for Internal {
         Ok(Response::new(drop_receiver))
     }
 
-    type StreamDeviceUplinkEventsStream = Pin<Box<dyn Stream<Item = Result<chirpstack_api::integration::UplinkEvent, Status>> + 'static + Send + Sync>>;
+    type StreamDeviceUplinkEventsStream = Pin<
+        Box<
+            dyn Stream<Item = Result<chirpstack_api::integration::UplinkEvent, Status>>
+                + 'static
+                + Send
+                + Sync,
+        >,
+    >;
 
     async fn stream_device_uplink_events(
         &self,
@@ -895,23 +902,26 @@ impl InternalService for Internal {
 
         let stream = match integration::local::get_uplink_event_stream().await {
             Ok(stream) => stream,
-            Err(e) => return Err(Status::internal(format!("Failed to open uplink event stream: {e}"))),
+            Err(e) => {
+                return Err(Status::internal(format!(
+                    "Failed to open uplink event stream: {e}"
+                )))
+            }
         };
-        let stream = stream
-            .filter_map(move |ev| {
-                let dev_eui = dev_eui.clone();
-                async move {
-                    if let Some(dev_info) = &ev.device_info {
-                        if dev_info.dev_eui == dev_eui {
-                            Some(Ok(ev))
-                        } else {
-                            None
-                        }
+        let stream = stream.filter_map(move |ev| {
+            let dev_eui = dev_eui.clone();
+            async move {
+                if let Some(dev_info) = &ev.device_info {
+                    if dev_info.dev_eui == dev_eui {
+                        Some(Ok(ev))
                     } else {
                         None
                     }
+                } else {
+                    None
                 }
-            });
+            }
+        });
 
         Ok(Response::new(Box::pin(stream)))
     }

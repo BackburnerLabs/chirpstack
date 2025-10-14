@@ -23,6 +23,7 @@ mod http;
 mod ifttt;
 mod influxdb;
 mod kafka;
+pub mod local;
 mod loracloud;
 #[cfg(test)]
 pub mod mock;
@@ -33,7 +34,6 @@ mod pilot_things;
 mod postgresql;
 mod redis;
 mod thingsboard;
-pub mod local;
 
 static GLOBAL_INTEGRATIONS: LazyLock<RwLock<Vec<Box<dyn Integration + Sync + Send>>>> =
     LazyLock::new(|| RwLock::new(Vec::new()));

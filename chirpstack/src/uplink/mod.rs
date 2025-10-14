@@ -181,10 +181,10 @@ async fn _deduplicate_uplink(
     let uplink = gw::UplinkFrameSet {
         phy_payload: event.phy_payload,
         tx_info: event.tx_info,
-        rx_info: match event.rx_info{
-            Some(rx_info) => vec!(rx_info),
+        rx_info: match event.rx_info {
+            Some(rx_info) => vec![rx_info],
             None => Vec::new(),
-        }
+        },
     };
 
     let deduplication_id = Uuid::new_v4();

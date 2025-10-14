@@ -71,15 +71,18 @@ impl Stats {
     }
 
     async fn get_single_tenant_id() -> Result<fields::Uuid> {
-        let tenants = tenant::list(2, 0, &tenant::Filters::default()).await
+        let tenants = tenant::list(2, 0, &tenant::Filters::default())
+            .await
             .context("Failed to query tenants")?;
 
         match tenants.len() {
-            0 => Err(anyhow!("No tenants found in database - cannot auto-create gateway")),
+            0 => Err(anyhow!(
+                "No tenants found in database - cannot auto-create gateway"
+            )),
             1 => Ok(tenants[0].id),
             _ => {
                 // If there are multiple tenants, we use the first one in the list
-                // however there should only ever be one tenant 
+                // however there should only ever be one tenant
                 warn!("Multiple tenants found, using first tenant for gateway auto-creation");
                 Ok(tenants[0].id)
             }
@@ -92,7 +95,7 @@ impl Stats {
         let tenant_id = Self::get_single_tenant_id().await?;
 
         let mut latitude = 0.0;
-        let mut longitude = 0.0; 
+        let mut longitude = 0.0;
         let mut altitude = 0.0;
 
         if let Some(loc) = &self.stats.location {
@@ -124,7 +127,7 @@ impl Stats {
         );
 
         info!(
-            gateway_id = %self.gateway_id, 
+            gateway_id = %self.gateway_id,
             tenant_id = %tenant_id,
             "Auto-created gateway for unknown device"
         );
