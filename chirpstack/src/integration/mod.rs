@@ -33,6 +33,7 @@ mod pilot_things;
 mod postgresql;
 mod redis;
 mod thingsboard;
+pub mod local;
 
 static GLOBAL_INTEGRATIONS: LazyLock<RwLock<Vec<Box<dyn Integration + Sync + Send>>>> =
     LazyLock::new(|| RwLock::new(Vec::new()));
@@ -46,6 +47,7 @@ pub async fn setup() -> Result<()> {
     let mut integrations = GLOBAL_INTEGRATIONS.write().await;
 
     integrations.push(Box::new(redis::Integration::new()));
+    integrations.push(Box::new(local::Integration::new()));
 
     for name in &conf.integration.enabled {
         match name.as_ref() {

@@ -4,7 +4,7 @@ use std::task::{Context, Poll};
 use std::time::Duration;
 
 use anyhow::{Context as AnyhowContext, Result};
-use futures::Stream;
+use futures::{Stream, StreamExt};
 use reqwest::header::{HeaderMap, CONTENT_TYPE};
 use reqwest::Client;
 use serde::Serialize;
@@ -23,7 +23,7 @@ use super::error::ToStatus;
 use super::helpers::ToProto;
 use super::{helpers, oauth2, oidc};
 use crate::storage::{api_key, device, error::Error, gateway, redis_key, search, tenant, user};
-use crate::{config, region, stream};
+use crate::{config, integration, region, stream};
 use lrwn::EUI64;
 
 pub struct Internal {
@@ -884,74 +884,36 @@ impl InternalService for Internal {
         Ok(Response::new(drop_receiver))
     }
 
-    type StreamDeviceUplinkEventsStream = DropReceiver<Result<chirpstack_api::integration::UplinkEvent, Status>>;
+    type StreamDeviceUplinkEventsStream = Pin<Box<dyn Stream<Item = Result<chirpstack_api::integration::UplinkEvent, Status>> + 'static + Send + Sync>>;
 
     async fn stream_device_uplink_events(
         &self,
         request: Request<api::StreamDeviceEventsRequest>,
     ) -> Result<Response<Self::StreamDeviceUplinkEventsStream>, Status> {
         let req = request.get_ref();
-        let dev_eui = EUI64::from_str(&req.dev_eui).map_err(|e| e.status())?;
+        let dev_eui = req.dev_eui.clone();
 
-        self.validator
-            .validate(
-                request.extensions(),
-                validator::ValidateDeviceAccess::new(validator::Flag::Read, dev_eui),
-            )
-            .await?;
-
-        let key = redis_key(format!("device:{{{}}}:stream:event", req.dev_eui));
-
-        let (stream_tx, stream_rx) = mpsc::channel(1);
-        let (drop_receiver, mut close_rx) = DropReceiver::new(ReceiverStream::new(stream_rx));
-
-        tokio::spawn(async move {
-            let (redis_tx, mut redis_rx) = mpsc::channel(1);
-            let mut eventlog_future = Box::pin(stream::event::get_uplink_event_logs(key, 10, redis_tx));
-
-            loop {
-                tokio::select! {
-                    // detect client disconnect
-                    _ = close_rx.recv() => {
-                        debug!("Client disconnected");
-                        redis_rx.close();
-                        break;
-                    },
-                    // detect get_event_logs function return
-                    res = &mut eventlog_future => {
-                        match res {
-                            Ok(_) => {
-                                trace!("get_event_logs returned");
-                            },
-                            Err(e) => {
-                                error!("Reading event-log returned error: {}", e);
-                                stream_tx.send(Err(e.status())).await.unwrap();
-                            },
+        let stream = match integration::local::get_uplink_event_stream().await {
+            Ok(stream) => stream,
+            Err(e) => return Err(Status::internal(format!("Failed to open uplink event stream: {e}"))),
+        };
+        let stream = stream
+            .filter_map(move |ev| {
+                let dev_eui = dev_eui.clone();
+                async move {
+                    if let Some(dev_info) = &ev.device_info {
+                        if dev_info.dev_eui == dev_eui {
+                            Some(Ok(ev))
+                        } else {
+                            None
                         }
-                        break;
-                    }
-                    // detect stream message
-                    msg = redis_rx.recv() => {
-                        match msg {
-                            None => {
-                                trace!("Redis Stream channel has been closed");
-                                break;
-                            },
-                            Some(msg) => {
-                                trace!("Message received from Redis Stream channel");
-                                if stream_tx.send(Ok(msg)).await.is_err() {
-                                    error!("Sending message to gRPC channel error");
-                                    break;
-                                };
-                            },
-                        }
+                    } else {
+                        None
                     }
                 }
-            }
-        });
+            });
 
-        Ok(Response::new(drop_receiver))
-
+        Ok(Response::new(Box::pin(stream)))
     }
 
     type StreamDeviceEventsStream = DropReceiver<Result<api::LogItem, Status>>;
