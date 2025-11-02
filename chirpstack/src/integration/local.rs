@@ -54,7 +54,7 @@ impl IntegrationTrait for Integration {
         _vars: &HashMap<String, String>,
         _pl: &integration::JoinEvent,
     ) -> Result<()> {
-        unimplemented!()
+        Ok(())
     }
 
     async fn ack_event(
@@ -62,7 +62,7 @@ impl IntegrationTrait for Integration {
         _vars: &HashMap<String, String>,
         _pl: &integration::AckEvent,
     ) -> Result<()> {
-        unimplemented!()
+        Ok(())
     }
 
     async fn txack_event(
@@ -70,7 +70,7 @@ impl IntegrationTrait for Integration {
         _vars: &HashMap<String, String>,
         _pl: &integration::TxAckEvent,
     ) -> Result<()> {
-        unimplemented!()
+        Ok(())
     }
 
     async fn log_event(
@@ -78,7 +78,7 @@ impl IntegrationTrait for Integration {
         _vars: &HashMap<String, String>,
         _pl: &integration::LogEvent,
     ) -> Result<()> {
-        unimplemented!()
+        Ok(())
     }
 
     async fn status_event(
@@ -86,7 +86,7 @@ impl IntegrationTrait for Integration {
         _vars: &HashMap<String, String>,
         _pl: &integration::StatusEvent,
     ) -> Result<()> {
-        unimplemented!()
+        Ok(())
     }
 
     async fn location_event(
@@ -94,7 +94,7 @@ impl IntegrationTrait for Integration {
         _vars: &HashMap<String, String>,
         _pl: &integration::LocationEvent,
     ) -> Result<()> {
-        unimplemented!()
+        Ok(())
     }
 
     async fn integration_event(
@@ -102,7 +102,7 @@ impl IntegrationTrait for Integration {
         _vars: &HashMap<String, String>,
         _pl: &integration::IntegrationEvent,
     ) -> Result<()> {
-        unimplemented!()
+        Ok(())
     }
 }
 
