@@ -926,6 +926,33 @@ impl InternalService for Internal {
         Ok(Response::new(Box::pin(stream)))
     }
 
+    type StreamUplinkEventsStream = Self::StreamDeviceUplinkEventsStream;
+
+    async fn stream_uplink_events(
+        &self,
+        request: Request<()>,
+    ) -> Result<Response<Self::StreamDeviceUplinkEventsStream>, Status> {
+        let req = request.get_ref();
+
+        let stream = match integration::local::get_uplink_event_stream().await {
+            Ok(stream) => stream,
+            Err(e) => {
+                return Err(Status::internal(format!(
+                    "Failed to open uplink event stream: {e}"
+                )))
+            }
+        };
+        let stream = stream.filter_map(|ev| async {
+            if ev.device_info.is_some() {
+                Some(Ok(ev))
+            } else {
+                None
+            }
+        });
+
+        Ok(Response::new(Box::pin(stream)))
+    }
+
     type StreamDeviceEventsStream = DropReceiver<Result<api::LogItem, Status>>;
 
     async fn stream_device_events(
